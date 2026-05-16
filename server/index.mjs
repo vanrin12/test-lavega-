@@ -24,12 +24,13 @@ app.post("/api/auth/google/callback", async (req, res) => {
     const { code, codeVerifier, redirectUri } = req.body ?? {};
     const clientId = process.env.VITE_GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const expectedRedirectUri = getExpectedRedirectUri(req);
 
-    if (!clientId || !clientSecret || !process.env.VITE_GOOGLE_REDIRECT_URI) {
+    if (!clientId || !clientSecret) {
       return res.status(500).json({ error: "server_config_missing" });
     }
 
-    if (!code || !codeVerifier || redirectUri !== process.env.VITE_GOOGLE_REDIRECT_URI) {
+    if (!code || !codeVerifier || redirectUri !== expectedRedirectUri) {
       return res.status(400).json({ error: "invalid_callback_payload" });
     }
 
@@ -108,9 +109,13 @@ app.use((_req, res) => {
   res.sendFile(path.join(distPath, "index.html"));
 });
 
-app.listen(port, () => {
-  console.log(`Auth server listening on http://localhost:${port}`);
-});
+if (process.env.VERCEL !== "1") {
+  app.listen(port, () => {
+    console.log(`Auth server listening on http://localhost:${port}`);
+  });
+}
+
+export default app;
 
 async function exchangeCodeForTokens({ clientId, clientSecret, code, codeVerifier, redirectUri }) {
   const response = await fetch(GOOGLE_TOKEN_URL, {
@@ -209,6 +214,16 @@ function clearSessionCookie(res) {
     secure: process.env.NODE_ENV === "production",
     path: "/",
   });
+}
+
+function getExpectedRedirectUri(req) {
+  if (process.env.VITE_GOOGLE_REDIRECT_URI) {
+    return process.env.VITE_GOOGLE_REDIRECT_URI;
+  }
+
+  const protocol = req.get("x-forwarded-proto") || req.protocol;
+  const host = req.get("x-forwarded-host") || req.get("host");
+  return `${protocol}://${host}/auth/callback`;
 }
 
 class HttpError extends Error {

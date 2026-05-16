@@ -7,7 +7,7 @@ export interface AppConfig {
 export function getConfig(): AppConfig {
   const config = {
     clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-    redirectUri: import.meta.env.VITE_GOOGLE_REDIRECT_URI,
+    redirectUri: import.meta.env.VITE_GOOGLE_REDIRECT_URI || `${window.location.origin}/auth/callback`,
     scopes: import.meta.env.VITE_GOOGLE_SCOPES || "openid email profile",
   };
 

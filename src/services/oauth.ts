@@ -20,6 +20,8 @@ export function isSessionValid(session: AuthSession) {
 }
 
 export async function startGoogleSignIn() {
+  assertPkceSupport();
+
   const config = getConfig();
   const state = generateRandomString();
   const verifier = generateCodeVerifier();
@@ -128,6 +130,15 @@ function toAuthError(caughtError: unknown, fallbackMessage: string, fallbackCode
   }
 
   return new AuthError(`${fallbackMessage} The auth server returned HTTP ${caughtError.status}.`, fallbackCode);
+}
+
+function assertPkceSupport() {
+  if (!window.isSecureContext || !crypto.subtle) {
+    throw new AuthError(
+      "Google sign-in requires HTTPS because PKCE uses the browser Web Crypto API. Deploy behind HTTPS, for example CloudFront in front of S3.",
+      "insecure_context",
+    );
+  }
 }
 
 function generateCodeVerifier() {

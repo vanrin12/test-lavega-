@@ -1,4 +1,4 @@
-import { completeGoogleSignIn, getCurrentSession, isSessionValid, logoutSession } from "./oauth";
+import { completeGoogleSignIn, getCurrentSession, isSessionValid, logoutSession, startGoogleSignIn } from "./oauth";
 import { API_ROUTES } from "../constants/apiRoutes";
 import { savePendingAuth } from "./sessionStorage";
 import { futureSession } from "../test/testUtils";
@@ -13,6 +13,16 @@ describe("oauth service", () => {
   it("validates sessions with a one-minute expiry skew", () => {
     expect(isSessionValid({ ...futureSession, expiresAt: Date.now() + 90_000 })).toBe(true);
     expect(isSessionValid({ ...futureSession, expiresAt: Date.now() + 30_000 })).toBe(false);
+  });
+
+  it("explains that PKCE needs a secure browser context", async () => {
+    vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
+    vi.stubGlobal("isSecureContext", false);
+
+    await expect(startGoogleSignIn()).rejects.toMatchObject({
+      code: "insecure_context",
+      message: expect.stringContaining("requires HTTPS"),
+    });
   });
 
   it("handles user cancellation from Google", async () => {
