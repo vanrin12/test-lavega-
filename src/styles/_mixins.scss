@@ -1,0 +1,15 @@
+@use "./tokens" as *;
+
+@mixin card-shell($radius: 4px) {
+  border: 1px solid $color-border;
+  border-radius: $radius;
+  background: $color-surface;
+}
+
+@mixin compact-label {
+  font-family: $font-heading;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  line-height: 16px;
+}

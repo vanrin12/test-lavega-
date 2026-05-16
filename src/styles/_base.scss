@@ -1,0 +1,73 @@
+@use "./tokens" as *;
+
+:root {
+  color: $color-ink;
+  background: $color-page;
+  font-family: $font-sans;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+a {
+  color: $color-link;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1,
+h2,
+h3,
+.sso-divider strong,
+.detail-field dt {
+  font-family: $font-heading;
+}
+
+code,
+.detail-field dd {
+  font-family: $font-mono;
+}
+
+code {
+  color: $color-ink;
+  font-size: 0.95em;
+}
+
+.page {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 48px 16px;
+}
+
+.auth-page,
+.profile-page {
+  background: $color-page;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

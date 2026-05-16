@@ -1,0 +1,47 @@
+@use "./tokens" as *;
+
+.google-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.security-icon {
+  width: 18px;
+  height: 20px;
+  flex: 0 0 auto;
+  color: #006ee6;
+}
+
+.ui-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.avatar-icon {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.info-icon {
+  width: 28px;
+  height: 28px;
+
+  &.blue {
+    color: #006ee6;
+  }
+
+  &.amber {
+    color: #b65a00;
+  }
+}
+
+.check-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #a84f00;
+  color: $color-surface;
+}
