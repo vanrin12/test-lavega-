@@ -30,11 +30,11 @@ export function AuthCallbackPage() {
   }, [navigate, setAuthenticatedSession]);
 
   return (
-    <main className="page">
+    <main id="main-content" className="page">
       <section className="panel callback-panel" aria-live="polite">
         <div className="spinner" aria-hidden="true" />
         <h1>Completing sign-in</h1>
-        <p>{error ?? "Verifying Google response and loading your profile..."}</p>
+        <p>{error ?? "Verifying Google response and loading your profile…"}</p>
       </section>
     </main>
   );

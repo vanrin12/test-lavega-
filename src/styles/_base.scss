@@ -6,6 +6,7 @@
   font-family: $font-sans;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  color-scheme: light;
 }
 
 * {
@@ -16,6 +17,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  -webkit-tap-highlight-color: rgba(26, 115, 232, 0.18);
 }
 
 button,
@@ -27,6 +29,16 @@ a {
   color: $color-link;
   font-weight: 600;
   text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 3px solid rgba(26, 115, 232, 0.38);
+  outline-offset: 3px;
 }
 
 h1,
@@ -42,6 +54,12 @@ h3,
 .sso-divider strong,
 .detail-field dt {
   font-family: $font-heading;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
 }
 
 code,
@@ -61,6 +79,23 @@ code {
   padding: 48px 16px;
 }
 
+.skip-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  border-radius: 4px;
+  background: $color-ink;
+  color: $color-surface;
+  padding: 10px 14px;
+  transform: translateY(calc(-100% - 24px));
+  transition: transform 160ms ease;
+
+  &:focus-visible {
+    transform: translateY(0);
+  }
+}
+
 .auth-page,
 .profile-page {
   background: $color-page;
@@ -69,5 +104,16 @@ code {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
   }
 }

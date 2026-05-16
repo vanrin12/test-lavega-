@@ -30,7 +30,7 @@ export function LoginPage() {
   }, []);
 
   return (
-    <main className="page auth-page">
+    <main id="main-content" className="page auth-page">
       <LoginCard error={error} isLoading={isStarting} onSignIn={handleSignIn} />
     </main>
   );

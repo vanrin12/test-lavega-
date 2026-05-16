@@ -60,6 +60,23 @@ describe("App auth flow", () => {
     expect(sessionStorage.length).toBe(0);
   });
 
+  it("keeps the user signed in when backend logout fails", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === API_ROUTES.authSession) {
+        return new Response(JSON.stringify(futureSession), { status: 200 });
+      }
+
+      return new Response(JSON.stringify({ error: "logout_failed" }), { status: 500 });
+    }));
+
+    renderWithRoute(<App />, APP_ROUTES.profile);
+    await user.click(await screen.findByRole("button", { name: /logout/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not log out");
+    expect(screen.getByRole("heading", { name: /lavega tester/i })).toBeInTheDocument();
+  });
+
   it("shows cancellation errors returned to the callback route", async () => {
     renderWithRoute(<App />, withSearch(APP_ROUTES.authCallback, "error=access_denied&state=test"));
 

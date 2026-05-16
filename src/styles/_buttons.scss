@@ -11,6 +11,7 @@
   border-radius: 4px;
   cursor: pointer;
   font-weight: 500;
+  touch-action: manipulation;
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, opacity 160ms ease;
 
   &:hover:not(:disabled) {

@@ -8,7 +8,7 @@ import { useAuth } from "../state/AuthContext";
 import { formatSessionExpiry } from "../utils/date";
 
 export function ProfilePage() {
-  const { session, logout } = useAuth();
+  const { error, session, status, logout } = useAuth();
 
   if (!session) {
     return <Navigate to={APP_ROUTES.login} replace />;
@@ -17,9 +17,14 @@ export function ProfilePage() {
   const validUntil = useMemo(() => formatSessionExpiry(session.expiresAt), [session.expiresAt]);
 
   return (
-    <main className="page profile-page">
+    <main id="main-content" className="page profile-page">
       <div className="profile-layout">
-        <ProfileSummaryCard profile={session.profile} onLogout={logout} />
+        <ProfileSummaryCard
+          error={error}
+          isLoggingOut={status === "logging_out"}
+          profile={session.profile}
+          onLogout={logout}
+        />
         <section className="details-column" aria-label="Session and account details">
           <SessionDetailsCard validUntil={validUntil} />
           <AccountInfoGrid />

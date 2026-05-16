@@ -3,13 +3,14 @@ import { getCurrentSession, logoutSession } from "../services/oauth";
 import { clearSession } from "../services/sessionStorage";
 import type { AuthSession } from "../types/auth";
 
-type AuthStatus = "checking" | "authenticated" | "anonymous";
+type AuthStatus = "checking" | "authenticated" | "anonymous" | "logging_out";
 
 interface AuthContextValue {
+  error: string | null;
   status: AuthStatus;
   session: AuthSession | null;
   setAuthenticatedSession: (session: AuthSession) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -17,6 +18,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("checking");
   const [session, setSession] = useState<AuthSession | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -25,6 +27,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const savedSession = await getCurrentSession();
         if (isMounted) {
+          setError(null);
           setSession((currentSession) => currentSession ?? savedSession);
           setStatus((currentStatus) => {
             if (currentStatus === "authenticated" && !savedSession) {
@@ -37,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {
         clearSession();
         if (isMounted) {
+          setError("Could not restore the saved session. Please sign in again.");
           setSession(null);
           setStatus("anonymous");
         }
@@ -51,20 +55,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setAuthenticatedSession = useCallback((nextSession: AuthSession) => {
+    setError(null);
     setSession(nextSession);
     setStatus("authenticated");
   }, []);
 
-  const logout = useCallback(() => {
-    void logoutSession();
-    clearSession();
-    setSession(null);
-    setStatus("anonymous");
-  }, []);
+  const logout = useCallback(async () => {
+    setError(null);
+    setStatus("logging_out");
+
+    try {
+      await logoutSession();
+      clearSession();
+      setSession(null);
+      setStatus("anonymous");
+    } catch {
+      setError("Could not log out. Please check your connection and try again.");
+      setStatus(session ? "authenticated" : "anonymous");
+    }
+  }, [session]);
 
   const value = useMemo(
-    () => ({ status, session, setAuthenticatedSession, logout }),
-    [logout, session, setAuthenticatedSession, status],
+    () => ({ error, status, session, setAuthenticatedSession, logout }),
+    [error, logout, session, setAuthenticatedSession, status],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

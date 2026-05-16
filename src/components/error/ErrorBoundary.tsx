@@ -39,7 +39,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     }
 
     return (
-      <main className="page">
+      <main id="main-content" className="page">
         <section className="error-boundary-panel" role="alert" aria-labelledby="error-boundary-title">
           <div>
             <p className="error-boundary-kicker">Application Error</p>

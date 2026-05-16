@@ -9,14 +9,14 @@ const LoginPage = lazy(() => import("./pages/LoginPage").then((module) => ({ def
 const ProfilePage = lazy(() => import("./pages/ProfilePage").then((module) => ({ default: module.ProfilePage })));
 
 function PageLoadingFallback() {
-  return <main className="page"><div className="panel">Loading page...</div></main>;
+  return <main id="main-content" className="page"><div className="panel">Loading page…</div></main>;
 }
 
 function ProtectedProfile() {
   const { status, session } = useAuth();
 
   if (status === "checking") {
-    return <main className="page"><div className="panel">Restoring session...</div></main>;
+    return <main id="main-content" className="page"><div className="panel">Restoring session…</div></main>;
   }
 
   if (!session) {
@@ -29,6 +29,7 @@ function ProtectedProfile() {
 export function App() {
   return (
     <ErrorBoundary>
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <AuthProvider>
         <Suspense fallback={<PageLoadingFallback />}>
           <Routes>

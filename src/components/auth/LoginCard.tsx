@@ -27,8 +27,14 @@ function LoginCardComponent({ error, isLoading, onSignIn }: LoginCardProps) {
 
         {error ? <Alert>{error}</Alert> : null}
 
-        <AppButton variant="google" icon={<GoogleIcon />} onClick={onSignIn} disabled={isLoading}>
-          {isLoading ? "Redirecting..." : "Sign in with Google"}
+        <AppButton
+          variant="google"
+          icon={<GoogleIcon />}
+          onClick={onSignIn}
+          disabled={isLoading}
+          aria-busy={isLoading}
+        >
+          {isLoading ? "Redirecting…" : "Sign in with Google"}
         </AppButton>
 
         <SsoDivider />

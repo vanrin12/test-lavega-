@@ -98,6 +98,10 @@ app.post("/api/auth/logout", (req, res) => {
   res.status(204).end();
 });
 
+app.use("/api", (_req, res) => {
+  res.status(404).json({ error: "api_route_not_found" });
+});
+
 const distPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
 app.use(express.static(distPath));
 app.use((_req, res) => {
