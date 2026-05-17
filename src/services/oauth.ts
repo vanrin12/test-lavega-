@@ -2,10 +2,7 @@ import { getConfig } from "../config";
 import { API_ROUTES } from "../constants/apiRoutes";
 import type { AuthSession } from "../types/auth";
 import { apiRequest, ApiRequestError } from "./apiClient";
-import { clearPendingAuth, loadPendingAuth, savePendingAuth } from "./sessionStorage";
 
-const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const PENDING_AUTH_MAX_AGE_MS = 10 * 60 * 1000;
 const EXPIRY_SKEW_MS = 60 * 1000;
 
 export class AuthError extends Error {
@@ -20,28 +17,20 @@ export function isSessionValid(session: AuthSession) {
 }
 
 export async function startGoogleSignIn() {
-  assertPkceSupport();
-
   const config = getConfig();
-  const state = generateRandomString();
-  const verifier = generateCodeVerifier();
-  const challenge = await createCodeChallenge(verifier);
 
-  savePendingAuth({ state, verifier, createdAt: Date.now() });
+  try {
+    const { authorizationUrl } = await apiRequest<{ authorizationUrl: string }>(API_ROUTES.googleStart, {
+      method: "POST",
+      json: {
+        redirectUri: config.redirectUri,
+      },
+    });
 
-  const params = new URLSearchParams({
-    client_id: config.clientId,
-    redirect_uri: config.redirectUri,
-    response_type: "code",
-    scope: config.scopes,
-    state,
-    code_challenge: challenge,
-    code_challenge_method: "S256",
-    access_type: "offline",
-    prompt: "consent",
-  });
-
-  window.location.assign(`${GOOGLE_AUTH_URL}?${params.toString()}`);
+    window.location.assign(authorizationUrl);
+  } catch (caughtError) {
+    throw toAuthError(caughtError, "Could not start Google sign-in.", "google_start_failed");
+  }
 }
 
 export async function completeGoogleSignIn(search: string): Promise<AuthSession> {
@@ -57,22 +46,11 @@ export async function completeGoogleSignIn(search: string): Promise<AuthSession>
     throw new AuthError("Google did not return an authorization code.", "missing_code");
   }
 
-  const pendingAuth = loadPendingAuth();
-  clearPendingAuth();
-
-  if (!pendingAuth) {
-    throw new AuthError("The sign-in request expired. Please try again.", "missing_pending_auth");
-  }
-
-  if (Date.now() - pendingAuth.createdAt > PENDING_AUTH_MAX_AGE_MS) {
-    throw new AuthError("The sign-in request expired. Please try again.", "expired_pending_auth");
-  }
-
-  if (!returnedState || returnedState !== pendingAuth.state) {
+  if (!returnedState) {
     throw new AuthError("The sign-in response could not be verified.", "invalid_state");
   }
 
-  return exchangeCodeForSession(code, pendingAuth.verifier);
+  return exchangeCodeForSession(code, returnedState);
 }
 
 export async function getCurrentSession(): Promise<AuthSession | null> {
@@ -93,7 +71,7 @@ export async function logoutSession() {
   });
 }
 
-async function exchangeCodeForSession(code: string, verifier: string): Promise<AuthSession> {
+async function exchangeCodeForSession(code: string, state: string): Promise<AuthSession> {
   const config = getConfig();
 
   try {
@@ -101,7 +79,7 @@ async function exchangeCodeForSession(code: string, verifier: string): Promise<A
       method: "POST",
       json: {
         code,
-        codeVerifier: verifier,
+        state,
         redirectUri: config.redirectUri,
       },
     });
@@ -130,31 +108,4 @@ function toAuthError(caughtError: unknown, fallbackMessage: string, fallbackCode
   }
 
   return new AuthError(`${fallbackMessage} The auth server returned HTTP ${caughtError.status}.`, fallbackCode);
-}
-
-function assertPkceSupport() {
-  if (!window.isSecureContext || !crypto.subtle) {
-    throw new AuthError(
-      "Google sign-in requires HTTPS because PKCE uses the browser Web Crypto API. Deploy behind HTTPS, for example CloudFront in front of S3.",
-      "insecure_context",
-    );
-  }
-}
-
-function generateCodeVerifier() {
-  return base64UrlEncode(crypto.getRandomValues(new Uint8Array(64)));
-}
-
-function generateRandomString() {
-  return base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)));
-}
-
-async function createCodeChallenge(verifier: string) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
-  return base64UrlEncode(new Uint8Array(digest));
-}
-
-function base64UrlEncode(bytes: Uint8Array) {
-  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }

@@ -1,7 +1,7 @@
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import express from "express";
-import { randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -10,18 +10,20 @@ dotenv.config();
 const app = express();
 const port = Number(process.env.AUTH_SERVER_PORT || 8787);
 const sessionCookieName = "lavega_session";
+const pendingAuthCookieName = "lavega_pending_auth";
 const sessions = new Map();
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
 const EXPIRY_SKEW_MS = 60 * 1000;
+const PENDING_AUTH_MAX_AGE_MS = 10 * 60 * 1000;
 
 app.use(express.json());
 app.use(cookieParser());
 
-app.post("/api/auth/google/callback", async (req, res) => {
+app.post("/api/auth/google/start", async (req, res) => {
   try {
-    const { code, codeVerifier, redirectUri } = req.body ?? {};
+    const { redirectUri } = req.body ?? {};
     const clientId = process.env.VITE_GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     const expectedRedirectUri = getExpectedRedirectUri(req);
@@ -30,15 +32,85 @@ app.post("/api/auth/google/callback", async (req, res) => {
       return res.status(500).json({ error: "server_config_missing" });
     }
 
-    if (!code || !codeVerifier || redirectUri !== expectedRedirectUri) {
+    if (redirectUri !== expectedRedirectUri) {
+      return res.status(400).json({ error: "invalid_start_payload" });
+    }
+
+    const state = generateRandomString(32);
+    const codeVerifier = generateRandomString(64);
+    const codeChallenge = createCodeChallenge(codeVerifier);
+
+    setPendingAuthCookie(res, {
+      state,
+      codeVerifier,
+      createdAt: Date.now(),
+    });
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: process.env.VITE_GOOGLE_SCOPES || "openid email profile",
+      state,
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256",
+      access_type: "offline",
+      prompt: "consent",
+    });
+
+    res.json({ authorizationUrl: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({
+      error: error.code || "google_start_failed",
+      error_description: error.message || "Google sign-in could not start.",
+    });
+  }
+});
+
+app.post("/api/auth/google/callback", async (req, res) => {
+  try {
+    const { code, state, redirectUri } = req.body ?? {};
+    const clientId = process.env.VITE_GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const expectedRedirectUri = getExpectedRedirectUri(req);
+
+    if (!clientId || !clientSecret) {
+      return res.status(500).json({ error: "server_config_missing" });
+    }
+
+    if (!code || !state || redirectUri !== expectedRedirectUri) {
       return res.status(400).json({ error: "invalid_callback_payload" });
+    }
+
+    const pendingAuth = readPendingAuthCookie(req);
+    clearPendingAuthCookie(res);
+
+    if (!pendingAuth) {
+      return res.status(400).json({
+        error: "missing_pending_auth",
+        error_description: "The sign-in request expired. Please try again.",
+      });
+    }
+
+    if (Date.now() - pendingAuth.createdAt > PENDING_AUTH_MAX_AGE_MS) {
+      return res.status(400).json({
+        error: "expired_pending_auth",
+        error_description: "The sign-in request expired. Please try again.",
+      });
+    }
+
+    if (state !== pendingAuth.state) {
+      return res.status(400).json({
+        error: "invalid_state",
+        error_description: "The sign-in response could not be verified.",
+      });
     }
 
     const tokenResponse = await exchangeCodeForTokens({
       clientId,
       clientSecret,
       code,
-      codeVerifier,
+      codeVerifier: pendingAuth.codeVerifier,
       redirectUri,
     });
     const profile = await fetchUserProfile(tokenResponse.access_token);
@@ -96,6 +168,7 @@ app.post("/api/auth/logout", (req, res) => {
   const sessionId = req.cookies[sessionCookieName];
   if (sessionId) sessions.delete(sessionId);
   clearSessionCookie(res);
+  clearPendingAuthCookie(res);
   res.status(204).end();
 });
 
@@ -207,6 +280,37 @@ function setSessionCookie(res, sessionId, expiresAt) {
   });
 }
 
+function setPendingAuthCookie(res, pendingAuth) {
+  res.cookie(pendingAuthCookieName, createSignedCookieValue(pendingAuth), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: PENDING_AUTH_MAX_AGE_MS,
+    path: "/",
+  });
+}
+
+function readPendingAuthCookie(req) {
+  const rawCookie = req.cookies[pendingAuthCookieName];
+  if (!rawCookie) return null;
+
+  const pendingAuth = readSignedCookieValue(rawCookie);
+  if (!pendingAuth?.state || !pendingAuth?.codeVerifier || !pendingAuth?.createdAt) {
+    return null;
+  }
+
+  return pendingAuth;
+}
+
+function clearPendingAuthCookie(res) {
+  res.clearCookie(pendingAuthCookieName, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+  });
+}
+
 function clearSessionCookie(res) {
   res.clearCookie(sessionCookieName, {
     httpOnly: true,
@@ -214,6 +318,53 @@ function clearSessionCookie(res) {
     secure: process.env.NODE_ENV === "production",
     path: "/",
   });
+}
+
+function createSignedCookieValue(value) {
+  const payload = Buffer.from(JSON.stringify(value)).toString("base64url");
+  return `${payload}.${signCookiePayload(payload)}`;
+}
+
+function readSignedCookieValue(rawCookie) {
+  const [payload, signature] = rawCookie.split(".");
+  if (!payload || !signature || !isValidCookieSignature(payload, signature)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function signCookiePayload(payload) {
+  return createHmac("sha256", getCookieSecret()).update(payload).digest("base64url");
+}
+
+function isValidCookieSignature(payload, signature) {
+  const expectedSignature = signCookiePayload(payload);
+  const actual = Buffer.from(signature);
+  const expected = Buffer.from(expectedSignature);
+
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+function getCookieSecret() {
+  const secret = process.env.AUTH_COOKIE_SECRET || process.env.GOOGLE_CLIENT_SECRET;
+  if (!secret) {
+    throw new HttpError("server_config_missing", "Auth cookie secret is not configured.", 500);
+  }
+
+  return secret;
+}
+
+function generateRandomString(byteLength) {
+  return randomBytes(byteLength).toString("base64url");
+}
+
+function createCodeChallenge(codeVerifier) {
+  return createHash("sha256").update(codeVerifier).digest("base64url");
 }
 
 function getExpectedRedirectUri(req) {

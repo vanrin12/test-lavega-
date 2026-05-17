@@ -1,26 +1,11 @@
-import {
-  clearPendingAuth,
-  clearSession,
-  loadPendingAuth,
-  savePendingAuth,
-} from "./sessionStorage";
+import { clearSession } from "./sessionStorage";
 
 describe("sessionStorage service", () => {
-  it("clears pending auth state", () => {
-    savePendingAuth({ state: "state", verifier: "verifier", createdAt: Date.now() });
+  it("clears legacy pending auth state", () => {
+    sessionStorage.setItem("lavega.auth.pkce.v1", "legacy-pending-auth");
 
     clearSession();
 
-    expect(loadPendingAuth()).toBeNull();
-  });
-
-  it("saves and clears pending PKCE auth state", () => {
-    const pendingAuth = { state: "state", verifier: "verifier", createdAt: Date.now() };
-
-    savePendingAuth(pendingAuth);
-    expect(loadPendingAuth()).toEqual(pendingAuth);
-
-    clearPendingAuth();
-    expect(loadPendingAuth()).toBeNull();
+    expect(sessionStorage.getItem("lavega.auth.pkce.v1")).toBeNull();
   });
 });

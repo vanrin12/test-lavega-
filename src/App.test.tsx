@@ -4,7 +4,6 @@ import { StrictMode } from "react";
 import { App } from "./App";
 import { API_ROUTES } from "./constants/apiRoutes";
 import { APP_ROUTES, withSearch } from "./constants/routes";
-import { savePendingAuth } from "./services/sessionStorage";
 import { futureSession, renderWithRoute } from "./test/testUtils";
 
 describe("App auth flow", () => {
@@ -89,7 +88,6 @@ describe("App auth flow", () => {
     vi.stubEnv("VITE_GOOGLE_CLIENT_ID", "client-id.apps.googleusercontent.com");
     vi.stubEnv("VITE_GOOGLE_REDIRECT_URI", "http://localhost:5173/auth/callback");
     vi.stubEnv("VITE_GOOGLE_SCOPES", "openid email profile");
-    savePendingAuth({ state: "expected-state", verifier: "verifier", createdAt: Date.now() });
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       if (String(input) === API_ROUTES.googleCallback) {
         return new Response(JSON.stringify(futureSession), { status: 200 });

@@ -1,6 +1,5 @@
 import { completeGoogleSignIn, getCurrentSession, isSessionValid, logoutSession, startGoogleSignIn } from "./oauth";
 import { API_ROUTES } from "../constants/apiRoutes";
-import { savePendingAuth } from "./sessionStorage";
 import { futureSession } from "../test/testUtils";
 
 describe("oauth service", () => {
@@ -15,13 +14,33 @@ describe("oauth service", () => {
     expect(isSessionValid({ ...futureSession, expiresAt: Date.now() + 30_000 })).toBe(false);
   });
 
-  it("explains that PKCE needs a secure browser context", async () => {
-    vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
-    vi.stubGlobal("isSecureContext", false);
+  it("starts sign-in through the backend PKCE endpoint", async () => {
+    const assignMock = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign: assignMock });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=server-state" }),
+    }));
+
+    await startGoogleSignIn();
+
+    expect(fetch).toHaveBeenCalledWith(API_ROUTES.googleStart, expect.objectContaining({
+      method: "POST",
+      credentials: "include",
+    }));
+    expect(assignMock).toHaveBeenCalledWith("https://accounts.google.com/o/oauth2/v2/auth?state=server-state");
+  });
+
+  it("surfaces backend start errors", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: "server_config_missing" }),
+    }));
 
     await expect(startGoogleSignIn()).rejects.toMatchObject({
-      code: "insecure_context",
-      message: expect.stringContaining("requires HTTPS"),
+      code: "server_config_missing",
+      message: "Google OAuth error (server_config_missing)",
     });
   });
 
@@ -32,23 +51,13 @@ describe("oauth service", () => {
     });
   });
 
-  it("rejects missing pending auth state", async () => {
-    await expect(completeGoogleSignIn("?code=abc&state=state")).rejects.toMatchObject({
-      code: "missing_pending_auth",
-    });
-  });
-
-  it("rejects invalid returned state", async () => {
-    savePendingAuth({ state: "expected-state", verifier: "verifier", createdAt: Date.now() });
-
-    await expect(completeGoogleSignIn("?code=abc&state=wrong-state")).rejects.toMatchObject({
+  it("rejects a missing returned state", async () => {
+    await expect(completeGoogleSignIn("?code=abc")).rejects.toMatchObject({
       code: "invalid_state",
     });
   });
 
   it("exchanges a valid code for a backend session", async () => {
-    savePendingAuth({ state: "expected-state", verifier: "verifier", createdAt: Date.now() });
-
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => futureSession,
@@ -68,7 +77,6 @@ describe("oauth service", () => {
   });
 
   it("surfaces backend Google token errors safely", async () => {
-    savePendingAuth({ state: "expected-state", verifier: "verifier", createdAt: Date.now() });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: false,
       json: async () => ({
@@ -84,7 +92,6 @@ describe("oauth service", () => {
   });
 
   it("includes the HTTP status when the auth server returns a non-json error", async () => {
-    savePendingAuth({ state: "expected-state", verifier: "verifier", createdAt: Date.now() });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Proxy error", { status: 500 })));
 
     await expect(completeGoogleSignIn("?code=abc&state=expected-state")).rejects.toMatchObject({
