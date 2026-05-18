@@ -9,32 +9,47 @@ A small React + TypeScript application that signs a user in with Google using OA
 - TypeScript
 - React Router
 - Google OAuth 2.0 with PKCE
-- Express backend-for-frontend for the Google token exchange
+- Express backend-for-frontend for PKCE creation, Google token exchange, and session handling
+- Vercel serverless functions for deployed API routes
 
 ## Login Flow
 
 ```mermaid
 sequenceDiagram
+  autonumber
   participant User
-  participant App
+  participant App as React App
   participant GoogleAuth as Google Authorization Endpoint
-  participant Server as Express Auth Server
+  participant Server as Express/Vercel Auth API
+  participant Cookie as HttpOnly Cookies
   participant GoogleToken as Google Token Endpoint
   participant GoogleProfile as Google UserInfo Endpoint
 
   User->>App: Click "Sign in with Google"
-  App->>Server: Request Google sign-in URL
+  App->>Server: POST /api/auth/google/start with redirectUri
   Server->>Server: Create PKCE verifier, challenge, and state
-  Server->>App: Set signed HttpOnly pending-auth cookie
-  App->>GoogleAuth: Redirect with code_challenge and state
+  Server->>Cookie: Set signed HttpOnly pending-auth cookie
+  Server-->>App: Return Google authorizationUrl
+  App->>GoogleAuth: Redirect to authorizationUrl
   GoogleAuth->>App: Redirect to /auth/callback with code and state
-  App->>Server: Send code and state
-  Server->>Server: Validate state and read PKCE verifier from HttpOnly cookie
+  App->>Server: POST /api/auth/google/callback with code, state, redirectUri
+  Server->>Cookie: Read and clear pending-auth cookie
+  Server->>Server: Validate cookie signature, TTL, and state
   Server->>GoogleToken: Exchange code, verifier, and client secret
   Server->>GoogleProfile: Fetch name, email, and picture
-  Server->>App: Set HttpOnly session cookie and return profile
+  Server->>Cookie: Set HttpOnly session cookie
+  Server-->>App: Return public profile session
   App->>User: Show profile screen
 ```
+
+## Runtime Auth Endpoints
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/auth/google/start` | Backend creates OAuth `state`, PKCE `code_verifier`, PKCE `code_challenge`, stores pending auth in a signed HttpOnly cookie, and returns Google `authorizationUrl`. |
+| `POST` | `/api/auth/google/callback` | Backend validates `state`, reads `code_verifier` from the pending cookie, exchanges the Google authorization code for tokens, fetches the profile, and sets the session cookie. |
+| `GET` | `/api/auth/session` | Restores a valid signed-in session from the HttpOnly cookie and refreshes the access token when possible. |
+| `POST` | `/api/auth/logout` | Deletes the server session and clears session/pending-auth cookies. |
 
 ## Install Dependencies
 
@@ -68,6 +83,18 @@ http://localhost:5173
 http://localhost:5173/auth/callback
 ```
 
+For the deployed Vercel app, also add:
+
+```text
+https://test-lavega-lavega-test-rinto.vercel.app
+```
+
+and:
+
+```text
+https://test-lavega-lavega-test-rinto.vercel.app/auth/callback
+```
+
 9. Copy the generated client ID and client secret.
 
 The client secret is used only by the local Express auth server. Never expose it in React components or browser code.
@@ -91,6 +118,12 @@ AUTH_SERVER_PORT=8787
 ```
 
 `.env` is ignored by Git so credentials stay out of version control.
+
+For Vercel, configure the same values in the Vercel project environment variables. Use this production redirect URI:
+
+```env
+VITE_GOOGLE_REDIRECT_URI=https://test-lavega-lavega-test-rinto.vercel.app/auth/callback
+```
 
 ## Run Locally
 
@@ -123,8 +156,33 @@ http://localhost:5173
 Error states to test:
 
 - Cancel Google consent. The app returns to the login screen with a cancellation message.
-- Remove the saved PKCE request from session storage before the callback. The app rejects the response.
+- Clear or expire the `lavega_pending_auth` cookie before the callback. The backend rejects the response as expired or missing.
 - Change the returned `state` query parameter manually. The app rejects the response as invalid.
+
+## Deploy to Vercel
+
+The app is deployed as a Vite frontend plus Vercel serverless API functions.
+
+Important files:
+
+- `vercel.json` routes React SPA pages to `index.html` while preserving `/api/*` routes.
+- `api/auth/google/start.mjs`
+- `api/auth/google/callback.mjs`
+- `api/auth/session.mjs`
+- `api/auth/logout.mjs`
+- `server/index.mjs` exports the Express app for Vercel and only calls `app.listen()` locally.
+
+Deploy command:
+
+```bash
+vercel deploy . --prod --scope lavega-test-rinto
+```
+
+Current production URL:
+
+```text
+https://test-lavega-lavega-test-rinto.vercel.app
+```
 
 ## Build
 
@@ -143,9 +201,10 @@ pnpm test
 - The app uses PKCE and validates the OAuth `state` value before exchanging the code.
 - The frontend never uses or stores a Google client secret. The secret is read only by the local Express auth server.
 - Tokens, authorization codes, refresh tokens, and secrets are never logged.
-- Pending PKCE verifier and state are stored in a signed HttpOnly cookie because they are only needed during the redirect flow.
+- Pending PKCE verifier and state are generated by the backend and stored in a signed HttpOnly cookie with a short TTL.
+- Browser JavaScript never reads the PKCE verifier.
 - The resulting signed-in state is restored through an HttpOnly, SameSite cookie. Browser JavaScript does not store access or refresh tokens.
-- Sessions are stored in memory for this entrance-test app. Production should use a durable encrypted session store or a signed server-side session strategy.
+- Sessions are stored in memory for this entrance-test app. Production should use a durable encrypted session store such as Redis, Vercel KV, DynamoDB, or a database-backed session strategy.
 - Refresh-token handling is implemented server-side only when Google returns a refresh token.
 - Google may require a fresh consent prompt before returning a refresh token.
 - This app is intended for the entrance test flow, not as a complete production authentication system.
